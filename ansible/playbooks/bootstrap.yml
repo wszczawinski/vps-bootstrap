@@ -1,0 +1,56 @@
+- name: Bootstrap a fresh server
+  hosts: all
+  become: true
+  vars_prompt:
+    - name: admin_password
+      prompt: "Sudo password for the admin user"
+      private: true
+      confirm: true
+
+  tasks:
+    - name: Create the admin user
+      ansible.builtin.user:
+        name: "{{ admin_user }}"
+        shell: /bin/bash
+        groups: sudo
+        append: true
+        password: "{{ admin_password | password_hash('sha512', 65534 | random(seed=inventory_hostname) | string) }}"
+
+    - name: Install admin public keys
+      ansible.posix.authorized_key:
+        user: "{{ admin_user }}"
+        key: "{{ lookup('file', playbook_dir ~ '/../../authorized_keys.local') }}"
+        exclusive: true
+
+    - name: Harden SSH
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/00-hardening.conf
+        content: |
+          PermitRootLogin no
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+        mode: "0644"
+        validate: sshd -t -f %s
+      notify: Restart SSH
+
+    - name: Remove root's authorized keys
+      ansible.builtin.file:
+        path: /root/.ssh/authorized_keys
+        state: absent
+
+    - name: Allow SSH through the firewall
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Enable firewall, deny incoming by default
+      community.general.ufw:
+        state: enabled
+        default: deny
+        direction: incoming
+
+  handlers:
+    - name: Restart SSH
+      ansible.builtin.service:
+        name: ssh
+        state: restarted

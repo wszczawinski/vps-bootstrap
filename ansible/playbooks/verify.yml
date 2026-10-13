@@ -1,0 +1,48 @@
+- name: Verify server hardening
+  hosts: all
+  become: true
+  tasks:
+    - name: Read effective SSH settings
+      ansible.builtin.command: sshd -T
+      register: sshd_config
+      changed_when: false
+
+    - name: Check SSH settings
+      ansible.builtin.assert:
+        that:
+          - "'permitrootlogin no' in sshd_config.stdout_lines"
+          - "'passwordauthentication no' in sshd_config.stdout_lines"
+          - "'kbdinteractiveauthentication no' in sshd_config.stdout_lines"
+
+    - name: Read firewall status
+      ansible.builtin.command: ufw status verbose
+      register: ufw_status
+      changed_when: false
+
+    - name: Check firewall is on and denies incoming
+      ansible.builtin.assert:
+        that:
+          - "'Status: active' in ufw_status.stdout"
+          - "'deny (incoming)' in ufw_status.stdout"
+
+    - name: Try to log in as root from outside
+      ansible.builtin.command: >
+        ssh -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes
+        -i {{ ansible_ssh_private_key_file | expanduser }}
+        root@{{ ansible_host }} true
+      delegate_to: localhost
+      become: false
+      register: root_login
+      changed_when: false
+      failed_when: root_login.rc == 0
+
+    - name: Check the server offers only key login
+      ansible.builtin.command: >
+        ssh -o BatchMode=yes -o ConnectTimeout=10
+        -o PreferredAuthentications=none
+        {{ ansible_user }}@{{ ansible_host }} true
+      delegate_to: localhost
+      become: false
+      register: auth_methods
+      changed_when: false
+      failed_when: "'Permission denied (publickey)' not in auth_methods.stderr"

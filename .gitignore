@@ -1,0 +1,14 @@
+# Local-only files: real keys, real IPs, real domains
+*.local
+*.local.*
+!*.example
+
+# Terraform state and variables (state contains the tunnel secret)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Noise
+.DS_Store
+*.retry
