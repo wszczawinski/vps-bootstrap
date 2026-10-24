@@ -1,0 +1,5 @@
+- name: Install the Cloudflare tunnel
+  ansible.builtin.import_playbook: tunnel.yml
+
+- name: Harden the server
+  ansible.builtin.import_playbook: bootstrap.yml
