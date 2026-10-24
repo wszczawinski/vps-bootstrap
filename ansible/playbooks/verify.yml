@@ -25,20 +25,60 @@
           - "'Status: active' in ufw_status.stdout"
           - "'deny (incoming)' in ufw_status.stdout"
 
+    - name: Read service states
+      ansible.builtin.service_facts:
+
+    - name: Check cloudflared is running and starts on boot
+      ansible.builtin.assert:
+        that:
+          - "ansible_facts.services['cloudflared.service'].state == 'running'"
+          - "ansible_facts.services['cloudflared.service'].status == 'enabled'"
+
+    - name: Read the tunnel token file
+      ansible.builtin.stat:
+        path: /etc/cloudflared/tunnel.env
+      register: tunnel_env
+
+    - name: Check the tunnel token file is root-only
+      ansible.builtin.assert:
+        that:
+          - tunnel_env.stat.exists
+          - tunnel_env.stat.mode == '0600'
+          - tunnel_env.stat.pw_name == 'root'
+
+    - name: Read root's authorized keys
+      ansible.builtin.stat:
+        path: /root/.ssh/authorized_keys
+      register: root_keys
+
+    - name: Check root has no authorized keys
+      ansible.builtin.assert:
+        that:
+          - not root_keys.stat.exists
+
+    - name: Check sudo asks the admin user for a password
+      ansible.builtin.command: sudo -n true
+      become: false
+      register: sudo_check
+      changed_when: false
+      failed_when: "'a password is required' not in sudo_check.stderr"
+
     - name: Try to log in as root from outside
       ansible.builtin.command: >
-        ssh -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes
+        ssh {{ ansible_ssh_common_args }}
+        -o BatchMode=yes -o ConnectTimeout=10
         -i {{ ansible_ssh_private_key_file | expanduser }}
         root@{{ ansible_host }} true
       delegate_to: localhost
       become: false
       register: root_login
       changed_when: false
-      failed_when: root_login.rc == 0
+      failed_when: "'Permission denied' not in root_login.stderr"
 
     - name: Check the server offers only key login
       ansible.builtin.command: >
-        ssh -o BatchMode=yes -o ConnectTimeout=10
+        ssh {{ ansible_ssh_common_args }}
+        -o BatchMode=yes -o ConnectTimeout=10
         -o PreferredAuthentications=none
         {{ ansible_user }}@{{ ansible_host }} true
       delegate_to: localhost
