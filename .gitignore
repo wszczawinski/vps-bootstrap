@@ -8,6 +8,11 @@
 *.tfstate
 *.tfstate.*
 *.tfvars
+*.tfplan
+crash.log
+crash.*.log
+*.tfrc
+.terraformrc
 
 # Noise
 .DS_Store

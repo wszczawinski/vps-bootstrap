@@ -18,6 +18,15 @@
         name: cloudflared
         update_cache: true
 
+    - name: Let unattended-upgrades update cloudflared
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/51unattended-upgrades-cloudflared
+        content: |
+          Unattended-Upgrade::Origins-Pattern {
+              "site=pkg.cloudflare.com";
+          };
+        mode: "0644"
+
     - name: Create the cloudflared config directory
       ansible.builtin.file:
         path: /etc/cloudflared
@@ -45,8 +54,10 @@
           [Service]
           EnvironmentFile=/etc/cloudflared/tunnel.env
           ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run
-          Restart=on-failure
+          Restart=always
           RestartSec=5s
+          DynamicUser=yes
+          NoNewPrivileges=yes
 
           [Install]
           WantedBy=multi-user.target
