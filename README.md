@@ -4,22 +4,27 @@ Ansible and Terraform that harden a fresh Ubuntu 24.04 VPS and put SSH behind a 
 
 ## Prerequisites
 
-- Ansible and OpenSSH 8.2+
+- Ansible with `passlib` (Homebrew's `ansible` includes it) and OpenSSH 8.2+
 - Terraform and `cloudflared`
 - FIDO2 hardware key (e.g. YubiKey)
-- Fresh Ubuntu 24.04 VPS
+- Fresh Ubuntu 24.04 VPS with root password login
 - Domain on Cloudflare with Zero Trust enabled
 
-## One-time setup
+## New VPS
+
+### 1. Local files (once)
+
+From the repo root:
 
 ```bash
+ansible-galaxy collection install -r ansible/requirements.yml
 ssh-keygen -t ed25519-sk -f ~/.ssh/id_ed25519_sk_vps    # hardware-backed key
 cp authorized_keys.local.example authorized_keys.local  # add your .pub keys
 cp ansible/inventory/bootstrap.local.yml.example ansible/inventory/bootstrap.local.yml  # server IP, as root
 cp ansible/inventory/hosts.local.yml.example ansible/inventory/hosts.local.yml          # tunnel hostname, as admin
 ```
 
-## Cloudflare (once per server)
+### 2. Cloudflare (once per server)
 
 API token permissions: Account → Cloudflare Tunnel Edit, Account → Access: Apps and Policies Edit, Zone → DNS Edit.
 
@@ -35,30 +40,50 @@ terraform init && terraform apply
 
 Creates the tunnel, DNS record and Access app. Survives server reinstalls.
 
-## New VPS
+### 3. Server
 
 From `ansible/`:
 
 ```bash
-ssh-keygen -R <ip>                                                   # forget old host key
-ssh-copy-id -i ~/.ssh/id_ed25519_sk_vps.pub root@<ip>                # root's key, once
-ansible-playbook -i inventory/bootstrap.local.yml playbooks/site.yml # tunnel, then harden
+ssh-copy-id -i ~/.ssh/id_ed25519_sk_vps.pub root@<ip>                 # root's key, last use of the root password
+ansible -i inventory/bootstrap.local.yml all -m ping                  # reachable as root
+ansible-playbook -i inventory/bootstrap.local.yml playbooks/site.yml  # tunnel, then harden; asks admin password twice
 ```
 
-`site.yml` installs the tunnel first, while root can still log in, then disables root login.
+`site.yml` installs the tunnel first, while root can still log in, then upgrades all packages and disables root login. The first upgrade can take several minutes with no output.
+
+### 4. Verify through the tunnel
+
+From `ansible/`:
+
+```bash
+ssh -o ProxyCommand="cloudflared access ssh --hostname %h" \
+    -i ~/.ssh/id_ed25519_sk_vps -o IdentitiesOnly=yes <admin>@<ssh_hostname>  # accept host key, then exit
+ansible-playbook playbooks/verify.yml -K
+```
+
+If `verify.yml` warns that a reboot is required, reboot through the tunnel (`sudo reboot`) and run it again.
+
+## Reinstall
+
+Forget the old host keys, then repeat steps 3 and 4 (Terraform is not needed):
+
+```bash
+ssh-keygen -R <ip>
+ssh-keygen -R <ssh_hostname>
+```
 
 ## Later runs
 
-Through the tunnel, as the admin user:
+From `ansible/`, through the tunnel, as the admin user:
 
 ```bash
 ansible-playbook playbooks/site.yml -K
 ansible-playbook playbooks/verify.yml -K
 ```
 
-Manual SSH:
+If `tunnel.yml` changed, run `site.yml` over the IP instead, because restarting cloudflared cuts a run that goes through the tunnel:
 
 ```bash
-ssh -o ProxyCommand="cloudflared access ssh --hostname %h" \
-    -i ~/.ssh/id_ed25519_sk_vps -o IdentitiesOnly=yes <admin>@<ssh_hostname>
+ansible-playbook -i inventory/bootstrap.local.yml playbooks/site.yml -e ansible_user=<admin> -K
 ```

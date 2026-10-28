@@ -1,20 +1,54 @@
 - name: Bootstrap a fresh server
   hosts: all
   become: true
-  vars_prompt:
-    - name: admin_password
-      prompt: "Sudo password for the admin user"
-      private: true
-      confirm: true
 
   tasks:
+    - name: Upgrade all packages (first run can take several minutes)
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+
+    - name: Check whether the admin user exists
+      ansible.builtin.command: id -u {{ admin_user }}
+      register: admin_check
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Ask for the admin sudo password
+      ansible.builtin.pause:
+        prompt: "Sudo password for {{ admin_user }}"
+        echo: false
+      register: admin_password
+      no_log: true
+      when: admin_check.rc != 0
+
+    - name: Confirm the admin sudo password
+      ansible.builtin.pause:
+        prompt: "Confirm sudo password for {{ admin_user }}"
+        echo: false
+      register: admin_password_confirm
+      no_log: true
+      when: admin_check.rc != 0
+
+    - name: Check both passwords match
+      ansible.builtin.assert:
+        that:
+          - admin_password.user_input | length > 0
+          - admin_password.user_input == admin_password_confirm.user_input
+        fail_msg: Passwords are empty or do not match
+        quiet: true
+      no_log: true
+      when: admin_check.rc != 0
+
     - name: Create the admin user
       ansible.builtin.user:
         name: "{{ admin_user }}"
         shell: /bin/bash
         groups: sudo
         append: true
-        password: "{{ admin_password | password_hash('sha512', 65534 | random(seed=inventory_hostname) | string) }}"
+        update_password: on_create
+        password: "{{ admin_password.user_input | password_hash('sha512') if admin_check.rc != 0 else omit }}"
 
     - name: Install admin public keys
       ansible.posix.authorized_key:
@@ -29,9 +63,24 @@
           PermitRootLogin no
           PasswordAuthentication no
           KbdInteractiveAuthentication no
+          AllowUsers {{ admin_user }}
+          X11Forwarding no
+          MaxAuthTries 3
         mode: "0644"
         validate: sshd -t -f %s
       notify: Restart SSH
+
+    - name: Install unattended-upgrades
+      ansible.builtin.apt:
+        name: unattended-upgrades
+
+    - name: Enable automatic security updates
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        mode: "0644"
 
     - name: Remove root's authorized keys
       ansible.builtin.file:

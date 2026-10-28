@@ -13,6 +13,9 @@
           - "'permitrootlogin no' in sshd_config.stdout_lines"
           - "'passwordauthentication no' in sshd_config.stdout_lines"
           - "'kbdinteractiveauthentication no' in sshd_config.stdout_lines"
+          - "'allowusers ' ~ admin_user in sshd_config.stdout_lines"
+          - "'x11forwarding no' in sshd_config.stdout_lines"
+          - "'maxauthtries 3' in sshd_config.stdout_lines"
 
     - name: Read firewall status
       ansible.builtin.command: ufw status verbose
@@ -33,6 +36,33 @@
         that:
           - "ansible_facts.services['cloudflared.service'].state == 'running'"
           - "ansible_facts.services['cloudflared.service'].status == 'enabled'"
+
+    - name: Check cloudflared does not run as root
+      ansible.builtin.command: systemctl show -p User,DynamicUser cloudflared
+      register: cloudflared_user
+      changed_when: false
+      failed_when: "'DynamicUser=yes' not in cloudflared_user.stdout"
+
+    - name: Read the apt configuration
+      ansible.builtin.command: apt-config dump
+      register: apt_config
+      changed_when: false
+
+    - name: Check automatic updates are on and include cloudflared
+      ansible.builtin.assert:
+        that:
+          - "'APT::Periodic::Unattended-Upgrade \"1\";' in apt_config.stdout_lines"
+          - "'site=pkg.cloudflare.com' in apt_config.stdout"
+
+    - name: Read the reboot flag
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_flag
+
+    - name: Warn if a reboot is needed
+      ansible.builtin.debug:
+        msg: "Reboot required to finish updates: sudo reboot"
+      when: reboot_flag.stat.exists
 
     - name: Read the tunnel token file
       ansible.builtin.stat:
