@@ -53,7 +53,7 @@
 
           [Service]
           EnvironmentFile=/etc/cloudflared/tunnel.env
-          ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run
+          ExecStart=/usr/bin/cloudflared --no-autoupdate --metrics 127.0.0.1:20241 tunnel run
           Restart=always
           RestartSec=5s
           DynamicUser=yes
@@ -76,3 +76,11 @@
         name: cloudflared
         state: restarted
         daemon_reload: true
+      async: 60
+      poll: 0
+
+    - name: Wait for the tunnel
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 120
+      listen: Restart cloudflared
