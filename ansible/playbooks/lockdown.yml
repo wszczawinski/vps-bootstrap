@@ -1,0 +1,19 @@
+- name: Close SSH on the public IP
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Wait until the tunnel is connected
+      ansible.builtin.uri:
+        url: http://127.0.0.1:20241/ready
+      register: tunnel_ready
+      check_mode: false
+      until: tunnel_ready.status == 200
+      retries: 12
+      delay: 5
+
+    - name: Remove the SSH firewall rule
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+        delete: true

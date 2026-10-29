@@ -3,3 +3,6 @@
 
 - name: Harden the server
   ansible.builtin.import_playbook: bootstrap.yml
+
+- name: Close SSH on the public IP
+  ansible.builtin.import_playbook: lockdown.yml

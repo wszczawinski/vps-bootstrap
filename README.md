@@ -1,11 +1,13 @@
 # vps-bootstrap
 
-Ansible and Terraform that harden a fresh Ubuntu 24.04 VPS and put SSH behind a Cloudflare Tunnel: admin user with a hardware SSH key, no root or password login, firewall on. No secrets in the repo; real values live in git-ignored `*.local` files.
+VPS setup with a Cloudflare Tunnel.
+
+Ansible hardens a fresh Ubuntu 24.04 server and Terraform creates the tunnel, so SSH works only through Cloudflare: admin user with a hardware SSH key, no root or password login, no open inbound ports. No secrets in the repo; real values live in git-ignored `*.local` files.
 
 ## Prerequisites
 
-- Ansible with `passlib` (Homebrew's `ansible` includes it) and OpenSSH 8.2+
-- Terraform and `cloudflared`
+- Ansible with `passlib` (Homebrew's `ansible` includes it), OpenSSH 8.2+
+- Terraform, `cloudflared`
 - FIDO2 hardware key (e.g. YubiKey)
 - Fresh Ubuntu 24.04 VPS with root password login
 - Domain on Cloudflare with Zero Trust enabled
@@ -35,24 +37,22 @@ cp terraform.tfvars.example terraform.tfvars    # fill in
 touch cloudflare.local.env && chmod 600 cloudflare.local.env
 # add one line with an editor: CLOUDFLARE_API_TOKEN=<token>
 set -a; source cloudflare.local.env; set +a
-terraform init && terraform apply
+terraform init && terraform apply               # tunnel, DNS record, Access app
 ```
-
-Creates the tunnel, DNS record and Access app. Survives server reinstalls.
 
 ### 3. Server
 
 From `ansible/`:
 
 ```bash
-ssh-copy-id -i ~/.ssh/id_ed25519_sk_vps.pub root@<ip>                 # root's key, last use of the root password
-ansible -i inventory/bootstrap.local.yml all -m ping                  # reachable as root
-ansible-playbook -i inventory/bootstrap.local.yml playbooks/site.yml  # tunnel, then harden; asks admin password twice
+ssh-copy-id -i ~/.ssh/id_ed25519_sk_vps.pub root@<ip>                 # last use of the root password
+ansible -i inventory/bootstrap.local.yml all -m ping
+ansible-playbook -i inventory/bootstrap.local.yml playbooks/site.yml  # asks the admin password twice
 ```
 
-`site.yml` installs the tunnel first, while root can still log in, then upgrades all packages and disables root login. The first upgrade can take several minutes with no output.
+`site.yml` installs the tunnel, upgrades packages (can take minutes with no output), hardens SSH, then closes SSH on the IP. After this, SSH works only through the tunnel.
 
-### 4. Verify through the tunnel
+### 4. Verify
 
 From `ansible/`:
 
@@ -62,28 +62,28 @@ ssh -o ProxyCommand="cloudflared access ssh --hostname %h" \
 ansible-playbook playbooks/verify.yml -K
 ```
 
-If `verify.yml` warns that a reboot is required, reboot through the tunnel (`sudo reboot`) and run it again.
-
-## Reinstall
-
-Forget the old host keys, then repeat steps 3 and 4 (Terraform is not needed):
-
-```bash
-ssh-keygen -R <ip>
-ssh-keygen -R <ssh_hostname>
-```
+If it warns that a reboot is required: `sudo reboot` through the tunnel, then run it again.
 
 ## Later runs
 
-From `ansible/`, through the tunnel, as the admin user:
+From `ansible/`, through the tunnel:
 
 ```bash
 ansible-playbook playbooks/site.yml -K
 ansible-playbook playbooks/verify.yml -K
 ```
 
-If `tunnel.yml` changed, run `site.yml` over the IP instead, because restarting cloudflared cuts a run that goes through the tunnel:
+Touch the security key when it blinks. unattended-upgrades installs security and cloudflared updates.
+
+## Reinstall
+
+Terraform is not needed. Forget the old host keys, then repeat steps 3 and 4:
 
 ```bash
-ansible-playbook -i inventory/bootstrap.local.yml playbooks/site.yml -e ansible_user=<admin> -K
+ssh-keygen -R <ip>
+ssh-keygen -R <ssh_hostname>
 ```
+
+## Locked out
+
+Log in through the provider's rescue console as root and run `ufw allow OpenSSH`.

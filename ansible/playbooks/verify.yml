@@ -22,11 +22,13 @@
       register: ufw_status
       changed_when: false
 
-    - name: Check firewall is on and denies incoming
+    - name: Check firewall is on, denies incoming and has no SSH rule
       ansible.builtin.assert:
         that:
           - "'Status: active' in ufw_status.stdout"
           - "'deny (incoming)' in ufw_status.stdout"
+          - "'OpenSSH' not in ufw_status.stdout"
+          - "'22/tcp' not in ufw_status.stdout"
 
     - name: Read service states
       ansible.builtin.service_facts:
@@ -93,26 +95,35 @@
       changed_when: false
       failed_when: "'a password is required' not in sudo_check.stderr"
 
-    - name: Try to log in as root from outside
-      ansible.builtin.command: >
-        ssh {{ ansible_ssh_common_args }}
-        -o BatchMode=yes -o ConnectTimeout=10
-        -i {{ ansible_ssh_private_key_file | expanduser }}
-        root@{{ ansible_host }} true
+    - name: Check from outside
       delegate_to: localhost
       become: false
-      register: root_login
-      changed_when: false
-      failed_when: "'Permission denied' not in root_login.stderr"
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      block:
+        - name: Try to log in as root from outside
+          ansible.builtin.command: >
+            ssh {{ ansible_ssh_common_args }}
+            -o BatchMode=yes -o ConnectTimeout=10
+            -i {{ ansible_ssh_private_key_file | expanduser }}
+            root@{{ ansible_host }} true
+          register: root_login
+          changed_when: false
+          failed_when: "'Permission denied' not in root_login.stderr"
 
-    - name: Check the server offers only key login
-      ansible.builtin.command: >
-        ssh {{ ansible_ssh_common_args }}
-        -o BatchMode=yes -o ConnectTimeout=10
-        -o PreferredAuthentications=none
-        {{ ansible_user }}@{{ ansible_host }} true
-      delegate_to: localhost
-      become: false
-      register: auth_methods
-      changed_when: false
-      failed_when: "'Permission denied (publickey)' not in auth_methods.stderr"
+        - name: Check the server offers only key login
+          ansible.builtin.command: >
+            ssh {{ ansible_ssh_common_args }}
+            -o BatchMode=yes -o ConnectTimeout=10
+            -o PreferredAuthentications=none
+            {{ ansible_user }}@{{ ansible_host }} true
+          register: auth_methods
+          changed_when: false
+          failed_when: "'Permission denied (publickey)' not in auth_methods.stderr"
+
+        - name: Check SSH is closed on the public IP
+          ansible.builtin.wait_for:
+            host: "{{ ansible_facts['default_ipv4']['address'] }}"
+            port: 22
+            state: stopped
+            timeout: 15

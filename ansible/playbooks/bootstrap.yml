@@ -3,10 +3,13 @@
   become: true
 
   tasks:
+    # Only over the IP (fresh server): through the tunnel, upgrading cloudflared can restart it
+    # and cut the run. Later updates come from unattended-upgrades.
     - name: Upgrade all packages (first run can take several minutes)
       ansible.builtin.apt:
         update_cache: true
         upgrade: dist
+      when: "'ProxyCommand' not in (ansible_ssh_common_args | default(''))"
 
     - name: Check whether the admin user exists
       ansible.builtin.command: id -u {{ admin_user }}
@@ -87,10 +90,13 @@
         path: /root/.ssh/authorized_keys
         state: absent
 
+    # Only over the IP (fresh server), so the run is not cut when the firewall turns on.
+    # lockdown.yml removes the rule at the end. Through the tunnel it is never added.
     - name: Allow SSH through the firewall
       community.general.ufw:
         rule: allow
         name: OpenSSH
+      when: "'ProxyCommand' not in (ansible_ssh_common_args | default(''))"
 
     - name: Enable firewall, deny incoming by default
       community.general.ufw:
