@@ -48,17 +48,18 @@ From `ansible/`:
 ssh-copy-id -i ~/.ssh/id_ed25519_sk_vps.pub root@<ip>                 # last use of the root password
 ansible -i inventory/bootstrap.local.yml all -m ping
 ansible-playbook -i inventory/bootstrap.local.yml playbooks/site.yml  # asks the admin password twice
+ssh -o ProxyCommand="cloudflared access ssh --hostname %h" \
+    -i ~/.ssh/id_ed25519_sk_vps -o IdentitiesOnly=yes <admin>@<ssh_hostname>  # accept host key, then exit
+ansible-playbook playbooks/site.yml -K                                # through the tunnel, expect changed=0
 ```
 
-`site.yml` installs the tunnel, upgrades packages (can take minutes with no output), hardens SSH, then closes SSH on the IP. After this, SSH works only through the tunnel.
+`site.yml` installs the tunnel, upgrades packages (can take minutes with no output), hardens SSH, then closes SSH on the IP. After this, SSH works only through the tunnel. Ansible cannot accept a new host key, so the manual `ssh` above does it once.
 
 ### 4. Verify
 
 From `ansible/`:
 
 ```bash
-ssh -o ProxyCommand="cloudflared access ssh --hostname %h" \
-    -i ~/.ssh/id_ed25519_sk_vps -o IdentitiesOnly=yes <admin>@<ssh_hostname>  # accept host key, then exit
 ansible-playbook playbooks/verify.yml -K
 ```
 
