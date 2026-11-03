@@ -1,0 +1,38 @@
+- name: Upgrade packages
+  hosts: all
+  become: true
+  tasks:
+    # Upgrading cloudflared through the tunnel restarts it and cuts the run.
+    # unattended-upgrades updates it instead.
+    - name: Upgrade everything except cloudflared
+      block:
+        - name: Hold cloudflared
+          ansible.builtin.dpkg_selections:
+            name: cloudflared
+            selection: hold
+
+        - name: Upgrade all packages
+          ansible.builtin.apt:
+            update_cache: true
+            upgrade: dist
+
+        - name: Remove unused packages
+          ansible.builtin.apt:
+            autoremove: true
+            purge: true
+
+      always:
+        - name: Unhold cloudflared
+          ansible.builtin.dpkg_selections:
+            name: cloudflared
+            selection: install
+
+    - name: Read the reboot flag
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_flag
+
+    - name: Warn if a reboot is needed
+      ansible.builtin.debug:
+        msg: "Reboot required to finish updates: sudo reboot"
+      when: reboot_flag.stat.exists

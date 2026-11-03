@@ -71,6 +71,7 @@ From `ansible/`, through the tunnel:
 
 ```bash
 ansible-playbook playbooks/site.yml -K
+ansible-playbook playbooks/update.yml -K
 ansible-playbook playbooks/verify.yml -K
 ```
 
