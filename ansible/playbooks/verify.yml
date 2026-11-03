@@ -56,6 +56,17 @@
           - "'APT::Periodic::Unattended-Upgrade \"1\";' in apt_config.stdout_lines"
           - "'site=pkg.cloudflare.com' in apt_config.stdout"
 
+    # update.yml holds cloudflared; an interrupted run would leave it held and stop its updates.
+    - name: Read held packages
+      ansible.builtin.command: apt-mark showhold
+      register: held_packages
+      changed_when: false
+
+    - name: Check cloudflared is not held
+      ansible.builtin.assert:
+        that:
+          - "'cloudflared' not in held_packages.stdout_lines"
+
     - name: Read the reboot flag
       ansible.builtin.stat:
         path: /var/run/reboot-required
