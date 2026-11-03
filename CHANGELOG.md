@@ -1,10 +1,18 @@
 # Changelog
 
+## [1.1.0] - 2026-11-03
+
+### 🚀 Features
+
+- *(ansible)* Add update playbook that upgrades all packages except cloudflared
+- *(ansible)* Verify cloudflared is not left on hold
+
 ## [1.0.0] - 2026-10-30
 
 ### 📚 Documentation
 
 - *(readme)* Accept host key and rerun site.yml after a new install
+
 ## [0.1.0] - 2026-10-29
 
 ### 🚀 Features
@@ -21,7 +29,3 @@
 ### 🐛 Bug Fixes
 
 - *(ansible)* Restart cloudflared in the background, expose readiness on localhost
-
-### ⚙️ Miscellaneous Tasks
-
-- *(release)* V0.1.0
