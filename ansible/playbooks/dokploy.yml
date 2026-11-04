@@ -1,0 +1,38 @@
+- name: Install Dokploy
+  hosts: all
+  become: true
+  tasks:
+    # Docker's published ports bypass UFW. Rules in DOCKER-USER run first, and Docker never
+    # flushes this chain. after.rules loads at boot, before Docker starts.
+    - name: Block Docker ports from the internet
+      ansible.builtin.blockinfile:
+        path: /etc/ufw/after.rules
+        block: |
+          *filter
+          :DOCKER-USER - [0:0]
+          -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+          -A DOCKER-USER -i {{ ansible_facts['default_ipv4']['interface'] }} -j DROP
+          -A DOCKER-USER -j RETURN
+          COMMIT
+      notify: Reload firewall
+
+    # The firewall must be reloaded before Docker starts publishing ports.
+    - name: Apply the firewall rules now
+      ansible.builtin.meta: flush_handlers
+
+    - name: Download the Dokploy install script
+      ansible.builtin.get_url:
+        url: https://dokploy.com/install.sh
+        dest: /root/dokploy-install.sh
+        mode: "0700"
+
+    # Installs Docker, starts Swarm and Dokploy. Runs once; /etc/dokploy marks it done.
+    - name: Install Dokploy (takes a few minutes)
+      ansible.builtin.command: /root/dokploy-install.sh
+      args:
+        creates: /etc/dokploy
+
+  handlers:
+    - name: Reload firewall
+      community.general.ufw:
+        state: reloaded
