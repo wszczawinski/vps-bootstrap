@@ -13,6 +13,11 @@ variable "ssh_hostname" {
   type        = string
 }
 
+variable "dokploy_hostname" {
+  description = "Public hostname for the Dokploy panel, one level deep, e.g. dokploy.example.com"
+  type        = string
+}
+
 variable "admin_email" {
   description = "The only email allowed through Cloudflare Access"
   type        = string

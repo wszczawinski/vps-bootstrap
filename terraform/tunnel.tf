@@ -15,6 +15,10 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "vps1" {
         service  = "ssh://localhost:22"
       },
       {
+        hostname = var.dokploy_hostname
+        service  = "http://localhost:3000"
+      },
+      {
         service = "http_status:404"
       },
     ]
